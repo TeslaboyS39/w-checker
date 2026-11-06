@@ -2,7 +2,7 @@
 
 Cek cuaca **per jam dan historis** untuk area tambang dalam satu halaman. Prakiraan (sampai 15 hari ke depan) dan data historis (mundur sampai 1940) diambil otomatis dari sumber yang tepat lalu digabung, siap disalin ke Excel.
 
-*Hourly forecast and historical weather for mine sites in a single page. Forecast and archive data are routed and merged automatically, with a map location picker and Excel-ready tables. One HTML file, no backend, no API key.*
+*Hourly forecast and historical weather for mine sites in a single page. Forecast and archive data are routed and merged automatically, with a map location picker and Excel-ready tables. Static HTML/CSS/JS (ES modules), no build step, no backend, no API key.*
 
 ![Tampilan W-Checker](docs/screenshot.png)
 
@@ -18,9 +18,11 @@ Cek cuaca **per jam dan historis** untuk area tambang dalam satu halaman. Prakir
 
 ## Cara pakai
 
-Tidak perlu install apa pun. Cukup buka `index.html` di browser modern (Chrome, Edge, Firefox).
+Pengguna cukup membuka link aplikasi (di-host di Cloudflare) dengan browser modern (Chrome, Edge, Firefox). Tidak perlu install apa pun.
 
-Untuk pengembangan, buka folder ini di VS Code lalu jalankan **Live Server** (port sudah diatur ke 5502 di `.vscode/settings.json`), lalu akses `http://127.0.0.1:5502/index.html`.
+Untuk pengembangan, buka folder ini di VS Code lalu jalankan **Live Server** (port sudah diatur ke 5502 di `.vscode/settings.json`), lalu akses `http://127.0.0.1:5502/index.html`. Server statis lain juga bisa. JavaScript-nya berupa ES modules, jadi `index.html` **tidak bisa** dibuka langsung dengan klik dua kali (`file://`), karena browser memblokir modul dari `file://`.
+
+Deploy cukup mengunggah isi folder apa adanya (tanpa build step).
 
 Butuh koneksi internet untuk data cuaca, pencarian tempat, dan peta.
 
@@ -39,7 +41,16 @@ Butuh koneksi internet untuk data cuaca, pencarian tempat, dan peta.
 ## Struktur repo
 
 ```
-index.html               Aplikasi (HTML + CSS + JS dalam satu file)
+index.html               Markup halaman
+css/style.css            Semua gaya, termasuk token tema terang/gelap
+js/main.js               Entry point: inisialisasi, event, alur Cek Cuaca, bahasa/tema/desimal
+js/core.js               State bersama, preferensi (localStorage), t(), fmt(), helper tanggal
+js/strings.js            Semua teks UI (ID/EN) dan deskripsi kode cuaca
+js/api.js                Open-Meteo: batas API, geocoding, routing forecast/archive
+js/data.js               Filter, agregasi, ringkasan (fungsi murni)
+js/location.js           Lokasi & pencarian tempat
+js/map.js                Peta MapLibre
+js/render.js             Kartu, tabel, ringkasan, salin tabel
 docs/SYSTEM_DESIGN.md    Desain sistem: arsitektur, alur data, keputusan desain
 docs/screenshot.png      Screenshot untuk README
 .vscode/settings.json    Port Live Server (5502)

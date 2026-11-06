@@ -35,7 +35,7 @@ Dokumen ini menjelaskan cara kerja W-Checker, alasan di balik tiap keputusan des
 
 | Prinsip | Wujudnya di W-Checker |
 |---|---|
-| **Nol infrastruktur** | Satu file `index.html`. Tidak ada build step, backend, atau API key. Bisa dibuka langsung dari folder. |
+| **Nol infrastruktur** | File statis (HTML + CSS + ES modules) yang di-host di Cloudflare. Tidak ada build step, backend, atau API key. |
 | **Pengguna cukup menyatakan *apa* yang diinginkan** | Pengguna memilih rentang tanggal, aplikasi yang memilih API. Pengguna memilih lokasi dengan cara apa pun, aplikasi menyimpannya sebagai koordinat. |
 | **Jujur soal asal data** | Label sumber per rentang tanggal, catatan kalau probabilitas hujan tidak tersedia, catatan kalau ada data yang diisi dari sumber lain. Nilai kosong tampil `-`, bukan `0`. |
 | **Gagal sebagian, bukan gagal total** | Peta gagal dimuat? Pencarian dan input koordinat tetap jalan. Tile topografi gagal? Ada pesan dan bisa ganti layer. |
@@ -48,7 +48,7 @@ Aplikasi berjalan sepenuhnya di browser. Semua layanan eksternal dipanggil langs
 
 ```mermaid
 flowchart LR
-    subgraph Browser["Browser: index.html"]
+    subgraph Browser["Browser: index.html + js/*.js"]
         UI["UI<br/>form, kartu, tabel, ringkasan"]
         LOC["Modul lokasi<br/>cari, koordinat, peta"]
         ROUTE["Router data<br/>planSegments()"]
@@ -76,26 +76,34 @@ flowchart LR
     UI <--> PREF
 ```
 
-**Bagian-bagian dalam `index.html`** (urutan sesuai di file):
+**Susunan file.** Kode dipecah per area tanggung jawab (bukan per fungsi) memakai ES modules native, tanpa bundler:
 
-| Bagian | Isi |
+| File | Isi |
 |---|---|
-| `<head>` script kecil | Menerapkan tema tersimpan sebelum halaman digambar, supaya tidak berkedip. |
-| CSS | Design token di `:root`, override tema gelap, komponen, dan aturan responsif. |
-| HTML | Panel form (lokasi, rentang, agregasi), area pesan, panel hasil, footnote. |
-| `STRINGS`, `WEATHER_DESC` | Semua teks UI dalam ID dan EN. |
-| Preferensi & helper | `readPref`/`writePref`, `t()`, `fmt()`, helper tanggal lokal. |
-| Peta & lokasi | `loadMapLibrary()`, `initMap()`, `setLocation()`, pencarian tempat. |
-| Router data | `planSegments()`, `fetchSegment()`, `fetchAllRows()`. |
-| Agregasi & ringkasan | `filterRows()`, `aggregateRows()`, `computeSummary()`. |
-| Render | `displayWeather()`, `generateCardView()`, `generateTableView()`, `copyTable()`. |
+| `index.html` | Markup: panel form (lokasi, rentang, agregasi), area pesan, panel hasil, footnote. Ditambah script kecil di `<head>` yang menerapkan tema tersimpan sebelum halaman digambar, supaya tidak berkedip. |
+| `css/style.css` | Design token di `:root`, override tema gelap, komponen, dan aturan responsif. |
+| `js/main.js` | Entry point: `init()`, wiring event tombol, `getWeather()`, bahasa (`applyLanguage()`), tema, pemisah desimal. |
+| `js/core.js` | Objek `state` bersama, `readPref`/`writePref`, `t()`, `locale()`, `fmt()`, helper tanggal lokal. |
+| `js/strings.js` | `STRINGS`, `WEATHER_DESC`: semua teks UI dalam ID dan EN. |
+| `js/api.js` | Batas API, `getLimits()`, `searchPlaces()`, `planSegments()`, `fetchAllRows()`. |
+| `js/data.js` | `filterRows()`, `aggregateRows()`, `computeSummary()`. Fungsi murni, tanpa DOM. |
+| `js/location.js` | `setLocation()`, `readInputCoords()`, pencarian tempat (combobox). |
+| `js/map.js` | `loadMapLibrary()`, `initMap()`, `placeMarker()`, `setMapLayer()`. Tidak tahu soal state lokasi; titik yang dipilih dikirim lewat callback. |
+| `js/render.js` | `displayWeather()`, kartu, tabel, ringkasan, `copyTable()`. |
+
+Arah ketergantungan satu arah, tanpa impor melingkar: `strings` ← `core` ← `api`/`data`/`map` ← `location`/`render` ← `main`.
+
+Dua aturan yang muncul karena memakai modules:
+
+- **State bersama disimpan di objek `state`** (`core.js`), bukan `let` yang diekspor, karena binding hasil `import` tidak bisa di-assign ulang dari modul lain.
+- **Tidak ada atribut `onclick` di HTML.** Fungsi di dalam modul tidak global, jadi semua event dipasang dengan `addEventListener` di `main.js`.
 
 ## 4. Alur data
 
 ```mermaid
 sequenceDiagram
     actor U as Surveyor
-    participant App as index.html
+    participant App as W-Checker
     participant Geo as Geocoding API
     participant Ar as Historical API
     participant Fc as Forecast API
@@ -118,14 +126,14 @@ sequenceDiagram
         App->>Fc: forecast untuk tanggal yang kosong
         Fc-->>App: isi jam yang kosong
     end
-    App->>App: simpan mentah di globalRawWeatherData
+    App->>App: simpan mentah di state.lastResult
     App->>App: filter jam tepat, agregasi, ringkasan
     App-->>U: Kartu / tabel / ringkasan
     U->>App: Ganti agregasi, bahasa, atau desimal
     App-->>U: Render ulang tanpa fetch ulang
 ```
 
-Poin penting: **data mentah disimpan sekali** (`globalRawWeatherData`). Semua perubahan tampilan (agregasi, bahasa, pemisah desimal) cukup dihitung ulang dari data itu tanpa memanggil API lagi.
+Poin penting: **data mentah disimpan sekali** (`state.lastResult`). Semua perubahan tampilan (agregasi, bahasa, pemisah desimal) cukup dihitung ulang dari data itu tanpa memanggil API lagi.
 
 ## 5. Routing sumber data: forecast vs archive
 
@@ -194,9 +202,10 @@ Dihitung dari **data per jam** dalam rentang terpilih, jadi **tidak berubah** sa
 | State | Tempat | Isi |
 |---|---|---|
 | Lokasi | `latInput` / `lonInput` | **Satu-satunya sumber kebenaran** untuk koordinat |
-| Nama tempat | `selectedPlace` | Label saja; dihapus kalau titik digeser lewat peta atau input manual |
-| Data mentah | `globalRawWeatherData` | Baris per jam + segmen + rentang + lokasi; dipakai ulang untuk render |
-| Tampilan aktif | `currentResultTab`, radio agregasi | Kartu/tabel, jam/hari/minggu/bulan |
+| Nama tempat | `selectedPlace` (privat di `location.js`) | Label saja; dihapus kalau titik digeser lewat peta atau input manual |
+| Data mentah | `state.lastResult` | Baris per jam + segmen + rentang + lokasi; dipakai ulang untuk render |
+| Bahasa, desimal, loading | `state.lang`, `state.decimalSep`, `state.isLoading` | Dibaca semua modul lewat objek `state` di `core.js` |
+| Tampilan aktif | Kelas `active` pada tab, radio agregasi | Kartu/tabel, jam/hari/minggu/bulan |
 | Preferensi | `localStorage` `wchecker.*` | `lang`, `theme`, `decimalSeparator`, `lastLocation` |
 
 Pola preferensi:
@@ -235,7 +244,7 @@ Peta yang selalu tampil juga berfungsi sebagai **pengecekan visual**: salah keti
 ### Peta
 
 - **MapLibre GL** dari cdnjs, dimuat lewat `loadMapLibrary()`. Kalau CDN atau WebGL tidak tersedia, peta menampilkan pesan dan bagian lain tetap jalan.
-- **Peta dasar: OpenFreeMap** (tile vektor). Gratis, tanpa API key, tanpa batas, boleh komersial, dan mengizinkan akses dari `file://` (CORS `*`).
+- **Peta dasar: OpenFreeMap** (tile vektor). Gratis, tanpa API key, tanpa batas, boleh komersial, dan mengizinkan akses dari origin mana pun (CORS `*`).
 - **Layer topografi: OpenTopoMap** (raster). Server relawan, jadi ada pesan khusus kalau gagal.
 - Urutan koordinat di MapLibre adalah **`[lon, lat]`**, kebalikan dari kebiasaan menulis lat, lon.
 - Penanda (`Marker`) adalah elemen DOM, jadi tidak hilang saat style peta diganti.
@@ -302,6 +311,7 @@ Tampilan kartu dibatasi 500 kartu (`MAX_CARDS`) dengan catatan untuk memakai tab
 | 8 | Menyalin tabel manual rawan salah blok | Tombol salin TSV + HTML | Langsung jadi sel di Excel |
 | 9 | Ribuan kartu membuat browser berat | Batas 500 kartu, tabel tetap lengkap | Rentang histori panjang tetap responsif |
 | 10 | Library peta besar tapi tidak semua orang butuh | Dimuat dinamis dengan penanganan gagal | Aplikasi inti tidak ikut gagal kalau CDN bermasalah |
+| 11 | Satu file `index.html` ±1.800 baris sulit dirawat (cari kode, baca diff) | Pecah jadi `index.html` + `css/style.css` + 8 ES module per area, tanpa bundler | Aplikasi di-host (Cloudflare), jadi modules aman dipakai. Konsekuensinya, aplikasi tidak bisa lagi dibuka dari `file://`. Pemecahan per fungsi, bundler, atau framework dinilai berlebihan untuk ±1.100 baris JS |
 
 ## 12. Checklist untuk aplikasi berikutnya
 
@@ -335,10 +345,11 @@ Pola dari W-Checker yang bisa dipakai ulang:
 
 ## 13. Pengujian
 
-Proyek ini tidak punya framework test. Selama pengembangan dipakai dua teknik yang cukup ringan untuk aplikasi satu file:
+Proyek ini tidak punya framework test. Selama pengembangan dipakai teknik yang cukup ringan untuk aplikasi statis:
 
-1. **Logika di Node.js dengan DOM tiruan.** Isi `<script>` utama diambil dari `index.html`, dijalankan dengan objek `document`/`localStorage` tiruan, lalu fungsi seperti `getWeather()` dipanggil **terhadap API asli**. Skenario yang diuji: hanya prakiraan, histori setahun penuh, rentang yang melewati hari ini, tanggal melewati batas, arsip kosong (disimulasikan dengan membungkus `fetch`), kedua bahasa, desimal koma, dan input lokasi yang salah.
-2. **Tampilan dengan Edge headless lewat Chrome DevTools Protocol.** Halaman dibuka dari `file://` dengan profil browser baru (tanpa cache), skenario dijalankan otomatis, lalu dicatat semua respons jaringan ≥ 400 dan error console, kemudian diambil screenshot di lebar desktop dan 390 px. Opsi `--screenshot` biasa tidak cukup untuk MapLibre karena tile vektor dimuat lewat web worker yang tidak ditunggu.
+1. **Logika di Node.js.** `js/data.js` dan sebagian `js/api.js` bisa di-`import` langsung dari Node. Modul yang menyentuh DOM dijalankan dengan objek `document`/`localStorage` tiruan, lalu fungsi seperti `getWeather()` dipanggil **terhadap API asli**. Skenario yang diuji: hanya prakiraan, histori setahun penuh, rentang yang melewati hari ini, tanggal melewati batas, arsip kosong (disimulasikan dengan membungkus `fetch`), kedua bahasa, desimal koma, dan input lokasi yang salah.
+2. **Tampilan dengan Edge headless lewat Chrome DevTools Protocol.** Halaman dibuka dari server statis lokal (bukan `file://`, karena ES modules) dengan profil browser baru (tanpa cache), skenario dijalankan otomatis, lalu dicatat semua respons jaringan ≥ 400 dan error console, kemudian diambil screenshot di lebar desktop dan 390 px. Opsi `--screenshot` biasa tidak cukup untuk MapLibre karena tile vektor dimuat lewat web worker yang tidak ditunggu.
+3. **Uji regresi saat refactor.** Saat aplikasi dipecah dari satu file menjadi modules, skenario CDP yang sama (muat halaman, rentang yang melewati hari ini, ganti agregasi/tab/desimal/bahasa/tema/layer, ketik nama tempat lalu langsung Cek Cuaca) dijalankan terhadap versi lama dan baru, lalu teks yang tampil dibandingkan. Hasilnya identik.
 
 ## 14. Batasan & ide pengembangan
 
