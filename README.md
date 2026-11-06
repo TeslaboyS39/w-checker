@@ -42,8 +42,8 @@ Butuh koneksi internet untuk data cuaca, pencarian tempat, dan peta.
 index.html               Aplikasi (HTML + CSS + JS dalam satu file)
 docs/SYSTEM_DESIGN.md    Desain sistem: arsitektur, alur data, keputusan desain
 docs/screenshot.png      Screenshot untuk README
-arsip/                   Versi lama (v1–v4s) sebagai referensi
-CLAUDE.md                Panduan untuk Claude Code saat mengembangkan repo ini
+.vscode/settings.json    Port Live Server (5502)
+LICENSE                  Lisensi MIT
 ```
 
 Penjelasan lengkap cara kerja aplikasi ada di [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md).
@@ -53,3 +53,7 @@ Penjelasan lengkap cara kerja aplikasi ada di [docs/SYSTEM_DESIGN.md](docs/SYSTE
 - Data cuaca: [Open-Meteo.com](https://open-meteo.com), CC BY 4.0
 - Peta: [OpenFreeMap](https://openfreemap.org), © [OpenMapTiles](https://www.openmaptiles.org), data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
 - Topografi: © [OpenTopoMap](https://opentopomap.org) (CC-BY-SA), SRTM
+
+## Lisensi
+
+Kode aplikasi berlisensi [MIT](LICENSE). Data dan peta mengikuti lisensi masing-masing penyedia di atas.
